@@ -58,27 +58,22 @@ else
     fi
 fi
 
-# Provide instructions for adding Homebrew to shell configuration
-echo "To ensure Homebrew works in new shell sessions, add the following to your shell configuration file:"
-echo ""
-if command -v brew >/dev/null 2>&1 && brew_prefix="$(brew --prefix 2>/dev/null)"; then
-    # Use the actual Homebrew prefix if available
-    echo "# Homebrew configuration"
-    echo "export PATH=\"$brew_prefix/bin:\$PATH\""
+# Check if gnupg is installed
+if command -v gpg >/dev/null 2>&1; then
+    echo "GnuPG is already installed."
 else
-    # Fallback to both possible paths
-    echo "# Homebrew configuration"
-    echo "export PATH=\"/opt/homebrew/bin:/usr/local/bin:\$PATH\""
+    echo "GnuPG not found. Installing GnuPG with Homebrew..."
+    if brew install gnupg; then
+        echo "GnuPG installed successfully."
+        # Verify gpg is now available
+        if command -v gpg >/dev/null 2>&1; then
+            echo "GnuPG (gpg command) is now available in the PATH."
+        else
+            echo "Error: GnuPG installed, but gpg command is not available."
+            exit 1
+        fi
+    else
+        echo "Error: Failed to install GnuPG."
+        exit 1
+    fi
 fi
-echo ""
-echo "Steps:"
-echo "1. Open your shell configuration file in a text editor:"
-echo "   - For zsh (default on macOS): ~/.zshrc"
-echo "   - For bash: ~/.bashrc"
-echo "   Example: nano ~/.zshrc"
-echo "2. Append the lines above to the file."
-echo "3. Save the file and reload your shell configuration:"
-echo "   - For zsh: source ~/.zshrc"
-echo "   - For bash: source ~/.bashrc"
-echo "   Alternatively, close and reopen your terminal."
-echo "4. Verify Homebrew is available by running: command -v brew"
