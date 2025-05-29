@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # install_dotfiles_prereqs.sh
 #
@@ -18,6 +18,10 @@
 # Enable case-insensitive matching for prompts
 shopt -s nocasematch
 
+# Global variables to track package installation status
+homebrew_install_status=2
+gnupg_install_status=2
+
 # Private function to print error to stderr and exit
 _error_exit() {
     local message="$1"
@@ -32,30 +36,32 @@ _verify_command() {
 }
 
 # Private function to install a package
+# Returns: 0 (newly installed), 1 (already installed), 2 (skipped by user)
 _install_package() {
     local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4" prereq_test="$5" prereq_error_message="$6"
     if command -v "$check_command" >/dev/null 2>&1; then
         echo "$package_name is already installed."
-    else
-        if [[ -n $prereq_test ]] && ! eval "$prereq_test"; then
-            echo "$prereq_error_message"
-        else
-            echo "$package_name not found."
-            read -r -p "Do you want to install $package_name? (y/n): " answer
-            case "$answer" in
-                y*)
-                    echo "Installing $package_name..."
-                    eval "$install_command" || _error_exit "Failed to install $package_name."
-                    echo "$package_name installed successfully."
-                    [[ -n $post_install_action ]] && eval "$post_install_action"
-                    _verify_command "$check_command" "$package_name"
-                    ;;
-                *)
-                    echo "$package_name installation skipped. Proceeding to next steps."
-                    ;;
-            esac
-        fi
+        return 1
     fi
+    echo "$package_name not found."
+    read -r -p "Do you want to install $package_name? (y/n): " answer
+    case "$answer" in
+        y*)
+            if [[ -n $prereq_test ]] && ! eval "$prereq_test"; then
+                _error_exit "$prereq_error_message"
+            fi
+            echo "Installing $package_name..."
+            eval "$install_command" || _error_exit "Failed to install $package_name."
+            echo "$package_name installed successfully."
+            [[ -n $post_install_action ]] && eval "$post_install_action"
+            _verify_command "$check_command" "$package_name"
+            return 0
+            ;;
+        *)
+            echo "$package_name installation skipped. Proceeding to next steps."
+            return 2
+            ;;
+    esac
 }
 
 # Check if system is macOS (Darwin)
@@ -70,17 +76,22 @@ sudo -v || _error_exit "Failed to obtain sudo access. Please ensure you have sud
 
 # Install Homebrew
 _install_package "brew" "Homebrew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH" "" ""
+homebrew_install_status=$?
 
 # Install GnuPG
-_install_package "gpg" "GnuPG" "brew install gnupg" "" "command -v brew >/dev/null 2>&1" "GnuPG requires Homebrew to be installed."
+_install_package "gpg" "GnuPG" "brew install gnupg" "" "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" "GnuPG requires Homebrew to be installed."
+gnupg_install_status=$?
 
-# Provide manual steps for shell configuration
-if command -v brew >/dev/null 2>&1 && brew_prefix=$(brew --prefix 2>/dev/null); then
+# Provide manual steps for shell configuration if Homebrew was newly installed
+if [[ $homebrew_install_status == 0 ]]; then
+    brew_prefix=$(brew --prefix 2>/dev/null)
     brew_shellenv="eval \"\$(${brew_prefix}/bin/brew shellenv)\""
-else
-    brew_shellenv="eval \"\$(/opt/homebrew/bin/brew shellenv)\""
+    config_file="your shell configuration file"
+    if [[ $gnupg_install_status == 0 ]]; then
+        echo "To make Homebrew and GnuPG available in future sessions, add the following to $config_file:"
+    else
+        echo "To make Homebrew available in future sessions, add the following to $config_file:"
+    fi
+    echo "  $brew_shellenv"
 fi
-config_file="your shell configuration file"
-echo "To make Homebrew and GnuPG available in future sessions, add the following to $config_file:"
-echo "  $brew_shellenv"
 exit 0
