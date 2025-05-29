@@ -13,89 +13,72 @@
 # 6. ...
 # 7. Success!
 
-# Check if system is macOS (Darwin)
-if [ "$(uname)" != "Darwin" ]; then
-    echo "Error: This script requires macOS (Darwin)."
+#!/bin/bash
+
+# Enable case-insensitive matching for prompts
+shopt -s nocasematch
+
+# Private function to print error to stderr and exit
+_error_exit() {
+    local message="$1"
+    echo "Error: $message" >&2
     exit 1
-fi
+}
+
+# Private function to verify a command is available
+_verify_command() {
+    local command_name="$1" package_name="$2"
+    command -v "$command_name" >/dev/null 2>&1 || _error_exit "$package_name installed, but $command_name command is not available."
+}
+
+# Private function to install a package
+_install_package() {
+    local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4"
+    if command -v "$check_command" >/dev/null 2>&1; then
+        echo "$package_name is already installed."
+    else
+        echo "$package_name not found."
+        read -r -p "Do you want to install $package_name? (y/n): " answer
+        case "$answer" in
+            y*)
+                echo "Installing $package_name..."
+                eval "$install_command" || _error_exit "Failed to install $package_name."
+                echo "$package_name installed successfully."
+                [[ -n $post_install_action ]] && eval "$post_install_action"
+                _verify_command "$check_command" "$package_name"
+                ;;
+            *)
+                echo "$package_name installation skipped. Proceeding to next steps."
+                ;;
+        esac
+    fi
+}
+
+# Check if system is macOS (Darwin)
+[[ $(uname) == Darwin ]] || _error_exit "This script requires macOS (Darwin)."
 
 # Check if user is in admin group
-if id -G -n | grep -q ' admin '; then
-    : # User is in admin group, proceed
-else
-    echo "Error: This script requires the user to be in the admin group."
-    exit 1
-fi
+id -G -n | grep -q ' admin ' || _error_exit "This script requires the user to be in the admin group."
 
 # Prompt user to cache sudo credentials
 echo "This script requires sudo access. You may be prompted for your password."
-if sudo -v; then
-    : # Sudo credentials cached, proceed
-else
-    echo "Error: Failed to obtain sudo access. Please ensure you have sudo privileges."
-    exit 1
-fi
+sudo -v || _error_exit "Failed to obtain sudo access. Please ensure you have sudo privileges."
 
-# Check if brew command is available
-if command -v brew >/dev/null 2>&1; then
-    echo "Homebrew is already installed."
-else
-    echo "Homebrew not found."
-    printf "Do you want to install Homebrew? (y/n): "
-    read -r answer
-    case "$answer" in
-        [Yy]*)
-            echo "Installing Homebrew..."
-            if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
-                echo "Homebrew installed successfully."
-                # Add Homebrew to PATH for immediate use
-                PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-                # Verify brew is now available
-                if command -v brew >/dev/null 2>&1; then
-                    echo "Homebrew is now available in the PATH."
-                else
-                    echo "Error: Homebrew installed, but brew command is not available."
-                    exit 1
-                fi
-            else
-                echo "Error: Failed to install Homebrew."
-                exit 1
-            fi
-            ;;
-        *)
-            echo "Homebrew installation skipped. Exiting."
-            exit 0
-            ;;
-    esac
-fi
+# Install Homebrew
+_install_package "brew" "Homebrew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH"
 
-# Check if gnupg is installed
-if command -v gpg >/dev/null 2>&1; then
-    echo "GnuPG is already installed."
+# Install GnuPG
+_install_package "gpg" "GnuPG" "brew install gnupg" ""
+
+# Provide manual steps for shell configuration
+echo "Changes to the PATH will be lost when this script exits."
+if command -v brew >/dev/null 2>&1 && brew_prefix=$(brew --prefix 2>/dev/null); then
+    brew_shellenv="eval \"\$(${brew_prefix}/bin/brew shellenv)\""
 else
-    echo "GnuPG not found."
-    printf "Do you want to install GnuPG? (y/n): "
-    read -r answer
-    case "$answer" in
-        [Yy]*)
-            echo "Installing GnuPG with Homebrew..."
-            if brew install gnupg; then
-                echo "GnuPG installed successfully."
-                # Verify gpg is now available
-                if command -v gpg >/dev/null 2>&1; then
-                    echo "GnuPG (gpg command) is now available in the PATH."
-                else
-                    echo "Error: GnuPG installed, but gpg command is not available."
-                    exit 1
-                fi
-            else
-                echo "Error: Failed to install GnuPG."
-                exit 1
-            fi
-            ;;
-        *)
-            echo "GnuPG installation skipped. Exiting."
-            exit 0
-            ;;
-    esac
+    brew_shellenv="eval \"\$(/opt/homebrew/bin/brew shellenv)\""
 fi
+config_file="your shell configuration file"
+echo "To make Homebrew and GnuPG available in future sessions, add the following to $config_file:"
+echo "  $brew_shellenv"
+echo "Then run: source $config_file"
+exit 0
