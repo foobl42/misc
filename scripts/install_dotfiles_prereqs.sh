@@ -36,10 +36,18 @@ _verify_command() {
 # Private function to install a package
 # Returns: 0 (newly installed), 1 (already installed), 2 (skipped by user)
 _install_package() {
-    local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4" prereq_test="$5" prereq_error_message="$6"
+    local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4" prereq_test="$5" prereq_error_message="$6" precheck_fix="$7"
     if command -v "$check_command" >/dev/null 2>&1; then
         echo "$package_name is already installed."
         return 1
+    fi
+    if [[ -n $precheck_fix ]]; then
+        echo "$package_name not found in PATH, attempting pre-check fix..."
+        eval "$precheck_fix"
+        if command -v "$check_command" >/dev/null 2>&1; then
+            echo "$package_name is already installed."
+            return 1
+        fi
     fi
     echo "$package_name not found."
     read -r -p "Do you want to install $package_name? (y/n): " answer
@@ -69,11 +77,23 @@ _install_package() {
 id -G -n | grep -q ' admin ' || _error_exit "This script requires the user to be in the admin group."
 
 # Install Homebrew
-_install_package "brew" "Homebrew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH" "" ""
+_install_package "brew" \
+                 "Homebrew" \
+                 "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" \
+                 "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH" \
+                 "" \
+                 "" \
+                 "if [ -x /opt/homebrew/bin/brew ]; then PATH=/opt/homebrew/bin:\$PATH; elif [ -x /usr/local/bin/brew ]; then PATH=/usr/local/bin:\$PATH; fi"
 homebrew_install_status=$?
 
 # Install GnuPG
-_install_package "gpg" "GnuPG" "brew install gnupg" "" "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" "GnuPG requires Homebrew to be installed."
+_install_package "gpg" \
+                 "GnuPG" \
+                 "brew install gnupg" \
+                 "" \
+                 "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" \
+                 "GnuPG requires Homebrew to be installed." \
+                 ""
 gnupg_install_status=$?
 
 # Provide manual steps for shell configuration if Homebrew was newly installed
