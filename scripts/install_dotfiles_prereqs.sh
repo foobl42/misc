@@ -33,24 +33,28 @@ _verify_command() {
 
 # Private function to install a package
 _install_package() {
-    local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4"
+    local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4" prereq_test="$5" prereq_error_message="$6"
     if command -v "$check_command" >/dev/null 2>&1; then
         echo "$package_name is already installed."
     else
-        echo "$package_name not found."
-        read -r -p "Do you want to install $package_name? (y/n): " answer
-        case "$answer" in
-            y*)
-                echo "Installing $package_name..."
-                eval "$install_command" || _error_exit "Failed to install $package_name."
-                echo "$package_name installed successfully."
-                [[ -n $post_install_action ]] && eval "$post_install_action"
-                _verify_command "$check_command" "$package_name"
-                ;;
-            *)
-                echo "$package_name installation skipped. Proceeding to next steps."
-                ;;
-        esac
+        if [[ -n $prereq_test ]] && ! eval "$prereq_test"; then
+            echo "$prereq_error_message"
+        else
+            echo "$package_name not found."
+            read -r -p "Do you want to install $package_name? (y/n): " answer
+            case "$answer" in
+                y*)
+                    echo "Installing $package_name..."
+                    eval "$install_command" || _error_exit "Failed to install $package_name."
+                    echo "$package_name installed successfully."
+                    [[ -n $post_install_action ]] && eval "$post_install_action"
+                    _verify_command "$check_command" "$package_name"
+                    ;;
+                *)
+                    echo "$package_name installation skipped. Proceeding to next steps."
+                    ;;
+            esac
+        fi
     fi
 }
 
@@ -65,13 +69,12 @@ echo "This script requires sudo access. You may be prompted for your password."
 sudo -v || _error_exit "Failed to obtain sudo access. Please ensure you have sudo privileges."
 
 # Install Homebrew
-_install_package "brew" "Homebrew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH"
+_install_package "brew" "Homebrew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH" "" ""
 
 # Install GnuPG
-_install_package "gpg" "GnuPG" "brew install gnupg" ""
+_install_package "gpg" "GnuPG" "brew install gnupg" "" "command -v brew >/dev/null 2>&1" "GnuPG requires Homebrew to be installed."
 
 # Provide manual steps for shell configuration
-echo "Changes to the PATH will be lost when this script exits."
 if command -v brew >/dev/null 2>&1 && brew_prefix=$(brew --prefix 2>/dev/null); then
     brew_shellenv="eval \"\$(${brew_prefix}/bin/brew shellenv)\""
 else
@@ -80,5 +83,4 @@ fi
 config_file="your shell configuration file"
 echo "To make Homebrew and GnuPG available in future sessions, add the following to $config_file:"
 echo "  $brew_shellenv"
-echo "Then run: source $config_file"
 exit 0
