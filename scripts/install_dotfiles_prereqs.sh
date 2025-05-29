@@ -30,7 +30,8 @@ _error_exit() {
 # Private function to verify a command is available
 _verify_command() {
     local command_name="$1" package_name="$2"
-    command -v "$command_name" >/dev/null 2>&1 || _error_exit "$package_name installed, but $command_name command is not available."
+    command -v "$command_name" >/dev/null 2>&1 || \
+      _error_exit "$package_name installed, but $command_name command is not available."
 }
 
 # Private function to install a package
@@ -76,24 +77,29 @@ _install_package() {
 # Check if user is in admin group
 id -G -n | grep -q ' admin ' || _error_exit "This script requires the user to be in the admin group."
 
+# Define Homebrew precheck fix as a multi-line string
+homebrew_precheck_fix=$(cat <<EOF
+if [ -x /opt/homebrew/bin/brew ]; then
+  PATH=/opt/homebrew/bin:\$PATH
+elif [ -x /usr/local/bin/brew ]; then
+  PATH=/usr/local/bin:\$PATH
+fi
+EOF
+)
+
 # Install Homebrew
-_install_package "brew" \
-                 "Homebrew" \
-                 "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" \
-                 "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH" \
-                 "" \
-                 "" \
-                 "if [ -x /opt/homebrew/bin/brew ]; then PATH=/opt/homebrew/bin:\$PATH; elif [ -x /usr/local/bin/brew ]; then PATH=/usr/local/bin:\$PATH; fi"
+_install_package "brew" "Homebrew" \
+  "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" \
+  "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH" \
+  "" "" \
+  "$homebrew_precheck_fix"
 homebrew_install_status=$?
 
 # Install GnuPG
-_install_package "gpg" \
-                 "GnuPG" \
-                 "brew install gnupg" \
-                 "" \
-                 "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" \
-                 "GnuPG requires Homebrew to be installed." \
-                 ""
+_install_package "gpg" "GnuPG" "brew install gnupg" "" \
+  "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" \
+  "GnuPG requires Homebrew to be installed." \
+  ""
 gnupg_install_status=$?
 
 # Provide manual steps for shell configuration if Homebrew was newly installed
