@@ -35,7 +35,7 @@ _verify_command() {
 }
 
 # Private function to install a package
-# Returns: 0 (newly installed), 1 (already installed), 2 (skipped by user)
+# Returns: 0 (newly installed), 1 (already installed), 2 (skipped by user or prerequisite failure)
 _install_package() {
     local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4" prereq_test="$5" prereq_error_message="$6" precheck_fix="$7"
     if command -v "$check_command" >/dev/null 2>&1; then
@@ -50,13 +50,14 @@ _install_package() {
             return 1
         fi
     fi
+    if [[ -n $prereq_test ]] && ! eval "$prereq_test"; then
+        echo "$prereq_error_message" >&2
+        return 2
+    fi
     echo "$package_name not found."
     read -r -p "Do you want to install $package_name? (y/n): " answer
     case "$answer" in
         y*)
-            if [[ -n $prereq_test ]] && ! eval "$prereq_test"; then
-                _error_exit "$prereq_error_message"
-            fi
             echo "Installing $package_name..."
             eval "$install_command" || _error_exit "Failed to install $package_name."
             echo "$package_name installed successfully."
