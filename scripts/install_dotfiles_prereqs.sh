@@ -13,8 +13,6 @@
 # 6. ...
 # 7. Success!
 
-#!/bin/bash
-
 # Enable case-insensitive matching for prompts
 shopt -s nocasematch
 
@@ -58,7 +56,7 @@ _install_package() {
             return 0
             ;;
         *)
-            echo "$package_name installation skipped. Proceeding to next steps."
+            echo "$package_name installation skipped."
             return 2
             ;;
     esac
@@ -69,10 +67,6 @@ _install_package() {
 
 # Check if user is in admin group
 id -G -n | grep -q ' admin ' || _error_exit "This script requires the user to be in the admin group."
-
-# Prompt user to cache sudo credentials
-echo "This script requires sudo access. You may be prompted for your password."
-sudo -v || _error_exit "Failed to obtain sudo access. Please ensure you have sudo privileges."
 
 # Install Homebrew
 _install_package "brew" "Homebrew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH" "" ""
