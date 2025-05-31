@@ -97,7 +97,7 @@ _install_package() {
 
   # Add extra paths to PATH if given
   if [[ -n $additional_paths ]]; then
-    # Convert space-separated paths to colon-separated
+    # Convert space-separated to colon-separated
     local colon_paths="${additional_paths// /:}"
     PATH="$colon_paths:$PATH"
   fi
@@ -140,6 +140,17 @@ id -G -n | grep -q ' admin ' || _error_exit "This script requires the user to be
 # Install Homebrew
 _install_package "Homebrew" "brew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "" "" "/opt/homebrew/bin /usr/local/bin"
 homebrew_install_status=$?
+
+# Update PATH for Homebrew if newly installed
+if [[ $homebrew_install_status == 0 ]]; then
+  if [ -x "/opt/homebrew/bin/brew" ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [ -x "/usr/local/bin/brew" ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  else
+    echo "Warning: brew command found, but shellenv setup failed." >&2
+  fi
+fi
 
 # Install GnuPG
 _install_package "GnuPG" "gpg" "brew install gnupg" "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" "GnuPG requires Homebrew to be installed." "/opt/homebrew/bin /usr/local/bin"
