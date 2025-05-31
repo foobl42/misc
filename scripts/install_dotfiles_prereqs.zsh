@@ -3,6 +3,9 @@
 # install_dotfiles_prereqs.zsh
 #
 
+# Load regex module
+zmodload zsh/regex
+
 # Enable strict mode and case-insensitive matching
 setopt nounset nocasematch
 
@@ -93,21 +96,11 @@ function _prompt_yes_no() {
   done
 }
 
-# Define prerequisite check for GnuPG
-# Returns: 0 if prereq met, 1 if not
-function _check_homebrew_prereq() {
-  if (( install_status[Homebrew] == 0 || install_status[Homebrew] == 1 )); then
-    return 0  # Homebrew is installed
-  else
-    return 1  # Homebrew not installed
-  fi
-}
-
 # Install a package
 # $1 - package_name: display name
 # $2 - check_command: cmd to check
 # $3 - install_command: install cmd
-# $4 - prereq_func: name of prereq check function (or empty)
+# $4 - prereq_func: anonymous function body (or empty)
 # $5 - prereq_error_message: error text
 # $6 - additional_paths: PATH dirs
 # Returns: 0 new, 1 exists, 2 skip
@@ -129,10 +122,8 @@ function _install_package() {
 
   # Check prereqs if provided
   if [[ -n $prereq_func ]]; then
-    if ! whence -f "$prereq_func" >/dev/null; then
-      _error_exit "Prerequisite function $prereq_func not found for $package_name."
-    fi
-    if ! "$prereq_func"; then
+    # Evaluate anonymous function
+    if ! eval "$prereq_func"; then
       print -u2 "$prereq_error_message"
       PATH="$original_path"
       install_status[$package_name]=2
@@ -162,7 +153,11 @@ function _install_package() {
 [[ $OSTYPE == darwin* ]] || _error_exit "This script requires macOS (Darwin)."
 
 # Check if user is in admin group
-groups | grep -q ' admin ' || _error_exit "This script requires the user to be in the admin group."
+if [[ ${(j: :)${(f)"$(groups)"}} =~ admin ]]; then
+  : # User is in admin group
+else
+  _error_exit "This script requires the user to be in the admin group."
+fi
 
 # Check for internet connectivity
 if ! ping -c 1 -W 2 google.com >/dev/null 2>&1; then
@@ -187,7 +182,7 @@ fi
 brew_prefix=$(brew --prefix 2>/dev/null || echo "/opt/homebrew")
 
 # Install GnuPG
-_install_package "GnuPG" "gpg" "brew install gnupg" "_check_homebrew_prereq" "GnuPG requires Homebrew to be installed." "$brew_prefix/bin"
+_install_package "GnuPG" "gpg" "brew install gnupg" "(( install_status[Homebrew] == 0 || install_status[Homebrew] == 1 ))" "GnuPG requires Homebrew to be installed." "$brew_prefix/bin"
 
 # Manual steps if Homebrew new
 if (( install_status[Homebrew] == 0 )); then
