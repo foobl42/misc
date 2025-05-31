@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# install_dotfiles_prereqs.sh
+# install_dotfiles_prereqs.bash
 #
 
 # Enable case-insensitive matching for prompts
