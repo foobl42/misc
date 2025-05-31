@@ -3,12 +3,15 @@
 # install_dotfiles_prereqs.zsh
 #
 
-# Enable case-insensitive matching for prompts
-setopt nocasematch
+# Enable strict mode and case-insensitive matching
+setopt nounset nocasematch
 
-# Global vars to track package install status
-typeset -i homebrew_install_status=2
-typeset -i gnupg_install_status=2
+# Global associative array to track package install status
+typeset -A install_status
+install_status=(
+  Homebrew 2
+  GnuPG 2
+)
 
 # Print error to stderr and exit
 # $1 - message: error text to show
@@ -52,7 +55,7 @@ function _verify_command() {
 # Returns: 0 for yes, 1 for no
 function _prompt_yes_no() {
   local prompt="$1" default="$2"
-  local display_default
+  local display_default reply
   if [[ $default == "y" ]]; then
     display_default="[y]"
   elif [[ $default == "n" ]]; then
@@ -60,40 +63,40 @@ function _prompt_yes_no() {
   else
     display_default="[]"
   fi
-  print -n "$prompt (y/n): $display_default "
-  read answer
-  # Trim whitespace and newlines from answer
-  answer=${answer//[[:space:]]/}
-  case $answer in
-    y|yes)
-      return 0  # User said yes
-      ;;
-    n|no)
-      return 1  # User said no
-      ;;
-    "")
-      if [[ $default == "y" ]]; then
-        return 0  # Default yes
-      elif [[ $default == "n" ]]; then
-        return 1  # Default no
-      else
+  while true; do
+    print -n "$prompt (y/n): $display_default "
+    read reply
+    # Trim whitespace and newlines from reply
+    reply=${reply//[[:space:]]/}
+    case $reply in
+      y|yes)
+        return 0  # User said yes
+        ;;
+      n|no)
+        return 1  # User said no
+        ;;
+      "")
+        if [[ $default == "y" ]]; then
+          return 0  # Default yes
+        elif [[ $default == "n" ]]; then
+          return 1  # Default no
+        else
+          print -u2 "Invalid input; enter 'y' or 'n'."
+          continue
+        fi
+        ;;
+      *)
         print -u2 "Invalid input; enter 'y' or 'n'."
-        _prompt_yes_no "$prompt" "$default"
-        return $?
-      fi
-      ;;
-    *)
-      print -u2 "Invalid input; enter 'y' or 'n'."
-      _prompt_yes_no "$prompt" "$default"
-      return $?
-      ;;
-  esac
+        continue
+        ;;
+    esac
+  done
 }
 
 # Define prerequisite check for GnuPG
 # Returns: 0 if prereq met, 1 if not
 function _check_homebrew_prereq() {
-  if (( homebrew_install_status == 0 || homebrew_install_status == 1 )); then
+  if (( install_status[Homebrew] == 0 || install_status[Homebrew] == 1 )); then
     return 0  # Homebrew is installed
   else
     return 1  # Homebrew not installed
@@ -120,6 +123,7 @@ function _install_package() {
   # Check if cmd is in PATH
   if _check_command "$check_command" "$package_name"; then
     PATH="$original_path"
+    install_status[$package_name]=1
     return 1  # Already installed
   fi
 
@@ -131,6 +135,7 @@ function _install_package() {
     if ! "$prereq_func"; then
       print -u2 "$prereq_error_message"
       PATH="$original_path"
+      install_status[$package_name]=2
       return 2  # Skipped: prereq fail
     fi
   fi
@@ -143,10 +148,12 @@ function _install_package() {
     print "$package_name installed successfully."
     _verify_command "$check_command" "$package_name"
     PATH="$original_path"
+    install_status[$package_name]=0
     return 0  # Newly installed
   else
     print "$package_name installation skipped."
     PATH="$original_path"
+    install_status[$package_name]=2
     return 2  # Skipped by user
   fi
 }
@@ -164,10 +171,9 @@ fi
 
 # Install Homebrew
 _install_package "Homebrew" "brew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "" "" "/opt/homebrew/bin /usr/local/bin"
-homebrew_install_status=$?
 
 # Update PATH for Homebrew if newly installed
-if (( homebrew_install_status == 0 )); then
+if (( install_status[Homebrew] == 0 )); then
   if [[ -x "/opt/homebrew/bin/brew" ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
   elif [[ -x "/usr/local/bin/brew" ]]; then
@@ -182,14 +188,13 @@ brew_prefix=$(brew --prefix 2>/dev/null || echo "/opt/homebrew")
 
 # Install GnuPG
 _install_package "GnuPG" "gpg" "brew install gnupg" "_check_homebrew_prereq" "GnuPG requires Homebrew to be installed." "$brew_prefix/bin"
-gnupg_install_status=$?
 
 # Manual steps if Homebrew new
-if (( homebrew_install_status == 0 )); then
+if (( install_status[Homebrew] == 0 )); then
   brew_prefix=$(brew --prefix 2>/dev/null)
   brew_shellenv="eval \"\$(${brew_prefix}/bin/brew shellenv)\""
   config_file="your shell configuration file (e.g., ~/.zprofile, ~/.zshrc)"
-  if (( gnupg_install_status == 0 )); then
+  if (( install_status[GnuPG] == 0 )); then
     print "To make Homebrew and GnuPG available in future sessions, add the following to $config_file:"
   else
     print "To make Homebrew available in future sessions, add the following to $config_file:"
