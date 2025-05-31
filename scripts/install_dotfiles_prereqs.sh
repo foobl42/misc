@@ -35,15 +35,24 @@ _verify_command() {
 }
 
 # Private function to install a package
+# Parameters:
+#   $1 - check_command: command to check if package is installed
+#   $2 - package_name: display name of the package
+#   $3 - install_command: command to install the package
+#   $4 - post_install_action: optional action after installation
+#   $5 - prereq_test: optional prerequisite test
+#   $6 - prereq_error_message: message if prerequisite fails
+#   $7 - precheck_fix: optional fix to run before prompting
+#   $8 - precheck_message: optional message to print before running precheck_fix
 # Returns: 0 (newly installed), 1 (already installed), 2 (skipped by user or prerequisite failure)
 _install_package() {
-    local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4" prereq_test="$5" prereq_error_message="$6" precheck_fix="$7"
+    local check_command="$1" package_name="$2" install_command="$3" post_install_action="$4" prereq_test="$5" prereq_error_message="$6" precheck_fix="$7" precheck_message="$8"
     if command -v "$check_command" >/dev/null 2>&1; then
         echo "$package_name is already installed."
         return 1
     fi
     if [[ -n $precheck_fix ]]; then
-        echo "$package_name not found in PATH, attempting pre-check fix..."
+        [[ -n $precheck_message ]] && echo "$precheck_message"
         eval "$precheck_fix"
         if command -v "$check_command" >/dev/null 2>&1; then
             echo "$package_name is already installed."
@@ -88,18 +97,20 @@ fi
 EOF
 )
 
-# Install Homebrew
+# Install Homebrew with suppressed precheck message
 _install_package "brew" "Homebrew" \
   "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" \
   "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH" \
   "" "" \
-  "$homebrew_precheck_fix"
+  "$homebrew_precheck_fix" \
+  ""
 homebrew_install_status=$?
 
-# Install GnuPG
+# Install GnuPG with empty precheck message (though not used)
 _install_package "gpg" "GnuPG" "brew install gnupg" "" \
   "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" \
   "GnuPG requires Homebrew to be installed." \
+  "" \
   ""
 gnupg_install_status=$?
 
