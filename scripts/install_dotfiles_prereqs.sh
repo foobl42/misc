@@ -3,41 +3,26 @@
 # install_dotfiles_prereqs.sh
 #
 
-# Steps:
-# 1. Exit unless darwin
-# 2. Exit unless admin
-# 3. Initiate sudo caching
-# 3. Ensure homebrew installed and configured
-# 4. Ensure gnupg installed and configured
-# 5. Ensure chezmoi installed
-# 6. ...
-# 7. Success!
-
 # Enable case-insensitive matching for prompts
 shopt -s nocasematch
 
-# Global variables to track package installation status
+# Global vars to track package install status
 homebrew_install_status=2
 gnupg_install_status=2
 
-# Private function to print an error message to stderr and exit the script
-# Parameters:
-#   $1 - message: the error message to display
-# Returns:
-#   None (exits the script with status 1)
+# Print error to stderr and exit
+# $1 - message: error text to show
+# Returns: exits with status 1
 _error_exit() {
   local message="$1"
   echo "Error: $message" >&2
-  exit 1
+  exit 1  # Exit with error
 }
 
-# Private function to check if a command is available
-# Parameters:
-#   $1 - check_command: the command to check (e.g., "brew", "gpg")
-#   $2 - package_name: the display name of the package (e.g., "Homebrew", "GnuPG")
-# Returns:
-#   0 - command is found
-#   1 - command is not found
+# Check if a command is available
+# $1 - check_command: cmd to test
+# $2 - package_name: display name
+# Returns: 0 if found, 1 if not
 _check_command() {
   local check_command="$1" package_name="$2"
   if command -v "$check_command" >/dev/null 2>&1; then
@@ -48,26 +33,19 @@ _check_command() {
   fi
 }
 
-# Private function to verify a command is available after installation
-# Exits the script if the command is not found
-# Parameters:
-#   $1 - command_name: the command to verify (e.g., "brew", "gpg")
-#   $2 - package_name: the display name of the package (e.g., "Homebrew", "GnuPG")
-# Returns:
-#   None (exits the script if the command is not found)
+# Verify cmd exists post-install
+# $1 - command_name: cmd to check
+# $2 - package_name: display name
+# Returns: exits if not found
 _verify_command() {
   local command_name="$1" package_name="$2"
-  command -v "$command_name" >/dev/null 2>&1 || \
-    _error_exit "$package_name installed, but $command_name command is not available."
+  command -v "$command_name" >/dev/null 2>&1 || _error_exit "$package_name installed, but $command_name command is not available."
 }
 
-# Private function to prompt the user for a yes/no response
-# Parameters:
-#   $1 - prompt: the question to ask the user
-#   $2 - default: the default response ("y" for yes, "n" for no, "" for no default)
-# Returns:
-#   0 - user answered yes (or default is yes and Enter was pressed)
-#   1 - user answered no (or default is no and Enter was pressed)
+# Prompt user for yes/no answer
+# $1 - prompt: question to ask
+# $2 - default: 'y', 'n', or ''
+# Returns: 0 for yes, 1 for no
 _prompt_yes_no() {
   local prompt="$1" default="$2"
   local display_default
@@ -80,107 +58,94 @@ _prompt_yes_no() {
   fi
   read -r -p "$prompt (y/n): $display_default " answer
   case "$answer" in
-    y|yes) return 0 ;;
-    n|no)  return 1 ;;
+    y|yes)
+      return 0  # User said yes
+      ;;
+    n|no)
+      return 1  # User said no
+      ;;
     "")
       if [[ $default == "y" ]]; then
-        return 0
+        return 0  # Default yes
       elif [[ $default == "n" ]]; then
-        return 1
+        return 1  # Default no
       else
-        echo "Invalid input; please enter 'y' or 'n'." >&2
+        echo "Invalid input; enter 'y' or 'n'." >&2
         _prompt_yes_no "$prompt" "$default"
-        return $?
+        return $?  # Recursive result
       fi
       ;;
     *)
-      echo "Invalid input; please enter 'y' or 'n'." >&2
+      echo "Invalid input; enter 'y' or 'n'." >&2
       _prompt_yes_no "$prompt" "$default"
-      return $?
+      return $?  # Recursive result
       ;;
   esac
 }
 
-# Private function to install a package
-# Parameters:
-#   $1 - package_name: display name of the package (e.g., "Homebrew", "GnuPG")
-#   $2 - check_command: command to check if package is installed (e.g., "brew", "gpg")
-#   $3 - install_command: command to install the package
-#   $4 - path_fix: space-separated list of directories to temporarily add to PATH for checking check_command
-#   $5 - prereq_test: optional test to check prerequisites
-#   $6 - prereq_error_message: message to display if prerequisites are not met
-#   $7 - post_install_action: optional command to run after installation; must be a safe, valid command defined within this script
-# Returns:
-#   0 - newly installed
-#   1 - already installed
-#   2 - skipped (user choice or prerequisite failure)
+# Install a package
+# $1 - package_name: display name
+# $2 - check_command: cmd to check
+# $3 - install_command: install cmd
+# $4 - prereq_test: prereq check
+# $5 - prereq_error_message: error text
+# $6 - additional_paths: PATH dirs
+# Returns: 0 new, 1 exists, 2 skip
 _install_package() {
-  local package_name="$1" check_command="$2" install_command="$3" \
-        path_fix="$4" prereq_test="$5" prereq_error_message="$6" post_install_action="$7"
+  local package_name="$1" check_command="$2" install_command="$3" prereq_test="$4" prereq_error_message="$5" additional_paths="$6"
   local original_path="$PATH"
 
-  # Check if the command is already in PATH
+  # Add extra paths to PATH if given
+  if [[ -n $additional_paths ]]; then
+    # Convert space-separated paths to colon-separated
+    local colon_paths="${additional_paths// /:}"
+    PATH="$colon_paths:$PATH"
+  fi
+
+  # Check if cmd is in PATH
   if _check_command "$check_command" "$package_name"; then
+    PATH="$original_path"
     return 1  # Already installed
   fi
 
-  # If path_fix is provided, temporarily add each directory to PATH and check for check_command
-  if [[ -n $path_fix ]]; then
-    PATH="$path_fix:$PATH"
-    if _check_command "$check_command" "$package_name"; then
-      PATH="$original_path"
-      return 1  # Already installed after PATH fix
-    fi
-  fi
-
-  # Check prerequisites if provided
+  # Check prereqs if provided
   if [[ -n $prereq_test ]] && ! eval "$prereq_test"; then
     echo "$prereq_error_message" >&2
     PATH="$original_path"
-    return 2
+    return 2  # Skipped: prereq fail
   fi
 
-  # Prompt user to install the package with a default of 'y'
+  # Prompt to install, default 'y'
   echo "$package_name not found."
   if _prompt_yes_no "Do you want to install $package_name?" "y"; then
     echo "Installing $package_name..."
     eval "$install_command" || _error_exit "Failed to install $package_name."
     echo "$package_name installed successfully."
-    [[ -n $post_install_action ]] && eval "$post_install_action"
     _verify_command "$check_command" "$package_name"
     PATH="$original_path"
-    return 0
+    return 0  # Newly installed
   else
     echo "$package_name installation skipped."
     PATH="$original_path"
-    return 2
+    return 2  # Skipped by user
   fi
 }
 
-# Check if system is macOS (Darwin)
+# Check for macOS (Darwin)
 [[ $(uname) == Darwin ]] || _error_exit "This script requires macOS (Darwin)."
 
 # Check if user is in admin group
 id -G -n | grep -q ' admin ' || _error_exit "This script requires the user to be in the admin group."
 
 # Install Homebrew
-_install_package "Homebrew" "brew" \
-  "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" \
-  "/opt/homebrew/bin /usr/local/bin" \
-  "" \
-  "" \
-  "PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH"
+_install_package "Homebrew" "brew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "" "" "/opt/homebrew/bin /usr/local/bin"
 homebrew_install_status=$?
 
 # Install GnuPG
-_install_package "GnuPG" "gpg" "brew install gnupg" \
-  "/opt/homebrew/bin /usr/local/bin" \
-  "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" \
-  "GnuPG requires Homebrew to be installed." \
-  ""
+_install_package "GnuPG" "gpg" "brew install gnupg" "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" "GnuPG requires Homebrew to be installed." "/opt/homebrew/bin /usr/local/bin"
 gnupg_install_status=$?
 
-# Provide manual steps for shell configuration if Homebrew was newly installed
+# Manual steps if Homebrew new
 if [[ $homebrew_install_status == 0 ]]; then
   brew_prefix=$(brew --prefix 2>/dev/null)
   brew_shellenv="eval \"\$(${brew_prefix}/bin/brew shellenv)\""
@@ -192,5 +157,4 @@ if [[ $homebrew_install_status == 0 ]]; then
   fi
   echo "  $brew_shellenv"
 fi
-exit 0
-
+exit 0  # Exit successfully
