@@ -61,6 +61,46 @@ _verify_command() {
     _error_exit "$package_name installed, but $command_name command is not available."
 }
 
+# Private function to prompt the user for a yes/no response
+# Parameters:
+#   $1 - prompt: the question to ask the user
+#   $2 - default: the default response ("y" for yes, "n" for no, "" for no default)
+# Returns:
+#   0 - user answered yes (or default is yes and Enter was pressed)
+#   1 - user answered no (or default is no and Enter was pressed)
+_prompt_yes_no() {
+  local prompt="$1" default="$2"
+  local display_default
+  if [[ $default == "y" ]]; then
+    display_default="[y]"
+  elif [[ $default == "n" ]]; then
+    display_default="[n]"
+  else
+    display_default="[]"
+  fi
+  read -r -p "$prompt (y/n): $display_default " answer
+  case "$answer" in
+    y|yes) return 0 ;;
+    n|no)  return 1 ;;
+    "")
+      if [[ $default == "y" ]]; then
+        return 0
+      elif [[ $default == "n" ]]; then
+        return 1
+      else
+        echo "Invalid input; please enter 'y' or 'n'." >&2
+        _prompt_yes_no "$prompt" "$default"
+        return $?
+      fi
+      ;;
+    *)
+      echo "Invalid input; please enter 'y' or 'n'." >&2
+      _prompt_yes_no "$prompt" "$default"
+      return $?
+      ;;
+  esac
+}
+
 # Private function to install a package
 # Parameters:
 #   $1 - package_name: display name of the package (e.g., "Homebrew", "GnuPG")
@@ -102,23 +142,19 @@ _install_package() {
     return 2
   fi
 
-  # Prompt user to install the package
+  # Prompt user to install the package with a default of 'y'
   echo "$package_name not found."
-  read -r -p "Do you want to install $package_name? (y/n): " answer
-  case "$answer" in
-    y*)
-      echo "Installing $package_name..."
-      eval "$install_command" || _error_exit "Failed to install $package_name."
-      echo "$package_name installed successfully."
-      [[ -n $post_install_action ]] && eval "$post_install_action"
-      _verify_command "$check_command" "$package_name"
-      return 0
-      ;;
-    *)
-      echo "$package_name installation skipped."
-      return 2
-      ;;
-  esac
+  if _prompt_yes_no "Do you want to install $package_name?" "y"; then
+    echo "Installing $package_name..."
+    eval "$install_command" || _error_exit "Failed to install $package_name."
+    echo "$package_name installed successfully."
+    [[ -n $post_install_action ]] && eval "$post_install_action"
+    _verify_command "$check_command" "$package_name"
+    return 0
+  else
+    echo "$package_name installation skipped."
+    return 2
+  fi
 }
 
 # Check if system is macOS (Darwin)
