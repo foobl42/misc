@@ -152,6 +152,11 @@ _install_package() {
 # Check if user is in admin group
 id -G -n | grep -q ' admin ' || _error_exit "This script requires the user to be in the admin group."
 
+# Check for internet connectivity
+if ! ping -c 1 -W 2 google.com >/dev/null 2>&1; then
+  _error_exit "No internet connection detected; required for package installs."
+fi
+
 # Install Homebrew
 _install_package "Homebrew" "brew" "/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" "" "" "/opt/homebrew/bin /usr/local/bin"
 homebrew_install_status=$?
@@ -178,7 +183,7 @@ gnupg_install_status=$?
 if [[ $homebrew_install_status == 0 ]]; then
   brew_prefix=$(brew --prefix 2>/dev/null)
   brew_shellenv="eval \"\$(${brew_prefix}/bin/brew shellenv)\""
-  config_file="your shell configuration file"
+  config_file="your shell configuration file (e.g., ~/.bash_profile, ~/.zshrc)"
   if [[ $gnupg_install_status == 0 ]]; then
     echo "To make Homebrew and GnuPG available in future sessions, add the following to $config_file:"
   else
