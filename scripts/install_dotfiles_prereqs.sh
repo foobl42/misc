@@ -106,10 +106,10 @@ _prompt_yes_no() {
 #   $1 - package_name: display name of the package (e.g., "Homebrew", "GnuPG")
 #   $2 - check_command: command to check if package is installed (e.g., "brew", "gpg")
 #   $3 - install_command: command to install the package
-#   $4 - path_fix: space-separated list of directories to check for check_command
+#   $4 - path_fix: space-separated list of directories to temporarily add to PATH for checking check_command
 #   $5 - prereq_test: optional test to check prerequisites
 #   $6 - prereq_error_message: message to display if prerequisites are not met
-#   $7 - post_install_action: optional command to run after installation
+#   $7 - post_install_action: optional command to run after installation; must be a safe, valid command defined within this script
 # Returns:
 #   0 - newly installed
 #   1 - already installed
@@ -117,21 +117,18 @@ _prompt_yes_no() {
 _install_package() {
   local package_name="$1" check_command="$2" install_command="$3" \
         path_fix="$4" prereq_test="$5" prereq_error_message="$6" post_install_action="$7"
+  local original_path="$PATH"
 
   # Check if the command is already in PATH
   if _check_command "$check_command" "$package_name"; then
     return 1  # Already installed
   fi
 
-  # If path_fix is provided, check each directory and add it to PATH if check_command is found
+  # If path_fix is provided, temporarily add each directory to PATH and check for check_command
   if [[ -n $path_fix ]]; then
-    for dir in $path_fix; do
-      if [ -x "$dir/$check_command" ]; then
-        PATH="$dir:$PATH"
-        break
-      fi
-    done
+    PATH="$path_fix:$PATH"
     if _check_command "$check_command" "$package_name"; then
+      PATH="$original_path"
       return 1  # Already installed after PATH fix
     fi
   fi
@@ -139,6 +136,7 @@ _install_package() {
   # Check prerequisites if provided
   if [[ -n $prereq_test ]] && ! eval "$prereq_test"; then
     echo "$prereq_error_message" >&2
+    PATH="$original_path"
     return 2
   fi
 
@@ -150,9 +148,11 @@ _install_package() {
     echo "$package_name installed successfully."
     [[ -n $post_install_action ]] && eval "$post_install_action"
     _verify_command "$check_command" "$package_name"
+    PATH="$original_path"
     return 0
   else
     echo "$package_name installation skipped."
+    PATH="$original_path"
     return 2
   fi
 }
@@ -174,7 +174,7 @@ homebrew_install_status=$?
 
 # Install GnuPG
 _install_package "GnuPG" "gpg" "brew install gnupg" \
-  "" \
+  "/opt/homebrew/bin /usr/local/bin" \
   "[[ \$homebrew_install_status == 0 || \$homebrew_install_status == 1 ]]" \
   "GnuPG requires Homebrew to be installed." \
   ""
@@ -193,3 +193,4 @@ if [[ $homebrew_install_status == 0 ]]; then
   echo "  $brew_shellenv"
 fi
 exit 0
+
